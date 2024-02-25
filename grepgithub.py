@@ -4,7 +4,7 @@ import os
 import re
 import time
 import uuid
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import bs4
 import requests
 
@@ -159,12 +159,14 @@ if __name__ == '__main__':
         out_stream.write(BANNER)
         out_stream.write("> Fetching 10/?")
     next_page, hits, count = fetch_grep_app(page=1, args=args)
-    while next_page and next_page < 101:    # Does not paginate after 100
-        time.sleep(1)
-        if not args.json_output:
-            out_stream.write("> Fetching {}/{}", 10*next_page, count)
-        next_page, page_hits, _ = fetch_grep_app(page=next_page, args=args)
-        hits.merge(page_hits)
+    num_pages = min(100, count // 10 + 1)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = []
+        for page in range(2, num_pages + 1):
+            futures.append(executor.submit(fetch_grep_app, page, args))
+        for future in as_completed(futures):
+            next_page, hits2, count = future.result()
+            hits.merge(hits2)
 
     if args.json_output:
         json_out = json.dumps(hits.hits, indent=4)
